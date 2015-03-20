@@ -26,7 +26,7 @@ class CyclicRecursor(object):
         self.successors[generators[-1]] = generators[0]
 
     def recurse(self, *args, **kwargs):
-        call_requests, returns, main_return = [], [], []
+        call_requests, call_returns, main_return = [], [], []
         generator = self.generators[0]
         args, kwargs = self.preprocess(args, kwargs)
 
@@ -36,22 +36,27 @@ class CyclicRecursor(object):
         self.append_next_request(generator, iterator, call_requests)
 
         while not main_return:
-            while call_requests:
-                generator, iterator, req = call_requests.pop(0)
-                req = self._canonicalize_request(req)
-                self.make_return_function(req.kwargs, returns,
-                                          generator, iterator)
-                target_generator = self.successors[generator]
-                target_iterator = target_generator(*req.args, **req.kwargs)
-                self.append_next_request(target_generator, target_iterator,
-                                         call_requests)
-
-            while returns:
-                generator, iterator, return_value = returns.pop(0)
-                self.send_and_append_next_request(generator, iterator,
-                                                  call_requests, return_value)
+            self._do_call_requests(call_requests, call_returns)
+            self._do_call_returns(call_returns, call_requests)
 
         return self.postprocessor(main_return[0])
+
+    def _do_call_requests(self, call_requests, call_returns):
+        while call_requests:
+            generator, iterator, req = call_requests.pop(0)
+            req = self._canonicalize_request(req)
+            self.make_return_function(req.kwargs, call_returns,
+                                      generator, iterator)
+            target_generator = self.successors[generator]
+            target_iterator = target_generator(*req.args, **req.kwargs)
+            self.append_next_request(target_generator, target_iterator,
+                                     call_requests)
+
+    def _do_call_returns(self, call_returns, call_requests):
+        while call_returns:
+            generator, iterator, return_value = call_returns.pop(0)
+            self.send_and_append_next_request(generator, iterator,
+                                              call_requests, return_value)
 
     def append_next_request(self, generator, iterator, request_queue):
         try:
