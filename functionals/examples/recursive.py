@@ -1,5 +1,6 @@
 from functionals.recursive import CyclicRecursor, Recursor
 
+
 class MetaCircularEvaluator(CyclicRecursor):
     def lisp_eval(expression, return_value=None):
         if isinstance(expression, tuple):

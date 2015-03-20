@@ -20,7 +20,7 @@ class CyclicRecursor(object):
         self.preprocessor = preprocessor
         self.postprocessor = postprocessor
         self.successors = {
-            generators[i]:generators[i+1]
+            generators[i]: generators[i+1]
             for i in range(len(generators) - 1)
         }
         self.successors[generators[-1]] = generators[0]
@@ -59,7 +59,8 @@ class CyclicRecursor(object):
         except StopIteration:
             pass
 
-    def send_and_append_next_request(self, generator, iterator, request_queue, to_send):
+    def send_and_append_next_request(self, generator, iterator,
+                                     request_queue, to_send):
         try:
             next_request = iterator.send(to_send)
             request_queue.append((generator, iterator, next_request))

@@ -3,7 +3,8 @@ import operator
 
 from unittest import TestCase
 
-from functionals.examples.recursive import MetaCircularEvaluator, factorial, fib
+from functionals.examples.recursive import (MetaCircularEvaluator,
+                                            factorial, fib)
 
 
 class MCETestCase(TestCase):

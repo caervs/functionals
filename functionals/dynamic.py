@@ -1,5 +1,6 @@
 from functionals.wrappers import OptionlessDecorator
 
+
 class Memoizer(OptionlessDecorator):
     def __init__(self, f):
         super().__init__(f)

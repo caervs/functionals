@@ -1,5 +1,3 @@
-import hashlib
-
 from unittest import TestCase
 
 from functionals.examples.dynamic import fib
