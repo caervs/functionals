@@ -1,17 +1,17 @@
-from functionals.recursive import CyclicRecursor, Recursor
+from functionals.recursive import CyclicRecursor, do_return, Recursor
 
 
 class MetaCircularEvaluator(CyclicRecursor):
-    def lisp_eval(expression, return_value=None):
+    def lisp_eval(expression):
         if isinstance(expression, tuple):
-            return_value((yield expression))
-        return_value(expression)
+            do_return((yield expression))
+        do_return(expression)
 
-    def lisp_apply(expression, return_value):
+    def lisp_apply(expression):
         evaluated = []
         for part in expression:
             evaluated.append((yield part))
-        return_value(evaluated[0](*evaluated[1:]))
+        do_return(evaluated[0](*evaluated[1:]))
 
     def __init__(self, eval_function=lisp_eval, apply_function=lisp_apply):
         super().__init__([eval_function, apply_function])
@@ -21,14 +21,14 @@ class MetaCircularEvaluator(CyclicRecursor):
 
 
 @Recursor.decorate
-def factorial(n, return_value):
+def factorial(n):
     if n == 0:
-        return_value(1)
-    return_value(n * (yield n-1))
+        do_return(1)
+    do_return(n * (yield n-1))
 
 
 @Recursor.decorate
-def fib(n, return_value):
+def fib(n):
     if n in [0, 1]:
-        return_value(n)
-    return_value((yield n-1) + (yield n-2))
+        do_return(n)
+    do_return((yield n-1) + (yield n-2))

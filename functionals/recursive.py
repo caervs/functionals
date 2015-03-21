@@ -11,6 +11,91 @@ class CallRequest(object):
         self.kwargs = kwargs
 
 
+def do_return(value):
+    raise StopIteration(value)
+
+
+class StopRecursion(StopIteration):
+    pass
+
+
+class RecursiveCaller(object):
+    def __init__(self, recursor, input_args, input_kwargs):
+        self.recursor = recursor
+        # TODO these could have better names
+        # TODO garbage collection
+        self.call_requests = []
+        self.call_returns = []
+        self.input_args = input_args
+        self.input_kwargs = input_kwargs
+        self.returns_to = {}
+        self.generator_of = {}
+
+    def call_and_log(self, generator, args, kwargs):
+        iterator = generator(*args, **kwargs)
+        self.generator_of[iterator] = generator
+        return iterator
+
+    def recurse(self):
+        generator = self.recursor.generators[0]
+        iterator = self.call_and_log(generator,
+                                     self.input_args,
+                                     self.input_kwargs)
+
+        self.returns_to[iterator] = None
+        self.generator_of[iterator] = generator
+
+        self.append_next_request(iterator)
+
+        while True:
+            try:
+                self._do_call_requests()
+                self._do_call_returns()
+            except StopRecursion as s:
+                return s.value
+
+    def _do_call_requests(self):
+        while self.call_requests:
+            iterator, req = self.call_requests.pop(0)
+            req = self._canonicalize_request(req)
+            generator = self.generator_of[iterator]
+            # TODO don't brak this abstraction
+            # TODO rename these
+            target_generator = self.recursor.successors[generator]
+            target_iterator = target_generator(*req.args, **req.kwargs)
+            self.generator_of[target_iterator] = target_generator
+            self.returns_to[target_iterator] = iterator
+            self.append_next_request(target_iterator)
+
+    def _do_call_returns(self):
+        while self.call_returns:
+            iterator, value = self.call_returns.pop(0)
+            if iterator is None:
+                raise StopRecursion(value)
+            self.send_and_append_next_request(iterator, value)
+
+    def append_next_request(self, iterator):
+        # TODO make this try/except into a contextmanager
+        try:
+            self.call_requests.append((iterator, next(iterator)))
+        except StopIteration as s:
+            self.call_returns.append((self.returns_to[iterator], s.value))
+            del self.returns_to[iterator]
+
+    def send_and_append_next_request(self, iterator, value):
+        try:
+            next_request = iterator.send(value)
+            self.call_requests.append((iterator, next_request))
+        except StopIteration as s:
+            self.call_returns.append((self.returns_to[iterator], s.value))
+            del self.returns_to[iterator]
+
+    def _canonicalize_request(self, request):
+        if isinstance(request, CallRequest):
+            return request
+        return CallRequest(request)
+
+
 class CyclicRecursor(object):
     pack = lambda *args, **kwargs: (args, kwargs)
     identity = lambda x: x
@@ -26,60 +111,9 @@ class CyclicRecursor(object):
         self.successors[generators[-1]] = generators[0]
 
     def recurse(self, *args, **kwargs):
-        call_requests, call_returns, main_return = [], [], []
-        generator = self.generators[0]
         args, kwargs = self.preprocess(args, kwargs)
-
-        self.make_return_function(kwargs, main_return, None, None)
-        iterator = generator(*args, **kwargs)
-
-        self.append_next_request(generator, iterator, call_requests)
-
-        while not main_return:
-            self._do_call_requests(call_requests, call_returns)
-            self._do_call_returns(call_returns, call_requests)
-
-        return self.postprocessor(main_return[0])
-
-    def _do_call_requests(self, call_requests, call_returns):
-        while call_requests:
-            generator, iterator, req = call_requests.pop(0)
-            req = self._canonicalize_request(req)
-            self.make_return_function(req.kwargs, call_returns,
-                                      generator, iterator)
-            target_generator = self.successors[generator]
-            target_iterator = target_generator(*req.args, **req.kwargs)
-            self.append_next_request(target_generator, target_iterator,
-                                     call_requests)
-
-    def _do_call_returns(self, call_returns, call_requests):
-        while call_returns:
-            generator, iterator, return_value = call_returns.pop(0)
-            self.send_and_append_next_request(generator, iterator,
-                                              call_requests, return_value)
-
-    def append_next_request(self, generator, iterator, request_queue):
-        try:
-            request_queue.append((generator, iterator, next(iterator)))
-        except StopIteration:
-            pass
-
-    def send_and_append_next_request(self, generator, iterator,
-                                     request_queue, to_send):
-        try:
-            next_request = iterator.send(to_send)
-            request_queue.append((generator, iterator, next_request))
-        except StopIteration:
-            pass
-
-    def make_return_function(self, kwargs, return_queue, generator, iterator):
-        def return_value(r):
-            if generator is not None:
-                return_queue.append((generator, iterator, r))
-            else:
-                return_queue.append(r)
-            raise StopIteration()
-        kwargs['return_value'] = return_value
+        recursive_caller = RecursiveCaller(self, args, kwargs)
+        return self.postprocessor(recursive_caller.recurse())
 
     def preprocess(self, args, kwargs):
         result = self.preprocessor(*args, **kwargs)
@@ -88,11 +122,6 @@ class CyclicRecursor(object):
                 return result
             return result, {}
         return (result,), {}
-
-    def _canonicalize_request(self, request):
-        if isinstance(request, CallRequest):
-            return request
-        return CallRequest(request)
 
 
 recurse = CallRequest
